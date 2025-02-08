@@ -33,7 +33,7 @@ loadSprite('Jump', 10);
 loadSprite('Dead', 10);
 
 // สำหรับการวิ่งไปทางซ้าย ใช้ sprite เดียวกับวิ่งไปทางขวาและสลับทิศทาง
-player.sprite.runLeft = player.sprite.runRight.map(img => {
+player.sprite.RunLeft = player.sprite.RunRight.map(img => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     canvas.width = img.width;
