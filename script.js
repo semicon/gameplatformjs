@@ -21,7 +21,7 @@ const player = {
 function loadSprite(spriteType, count) {
     for (let i = 1; i <= count; i++) {
         const img = new Image();
-        img.src = './png/'+spriteType+'('+i+')'+'.png';
+        img.src = './png/'+spriteType+'%20('+i+')'+'.png';
         player.sprite[spriteType].push(img);
     }
 }
