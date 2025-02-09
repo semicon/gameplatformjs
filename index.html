@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Platform Game</title>
     <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
         canvas {
             border: 1px solid black;
         }
@@ -12,6 +20,346 @@
 </head>
 <body>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <script src="script.js"></script>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const player = {
+            x: 50,
+            y: canvas.height - 150 - 150,
+            width: 150,
+            height: 150,
+            speed: 5,
+            velocityX: 0,
+            velocityY: 0,
+            jumping: false,
+            sprite: {
+                Idle: [],
+                Run: [],
+                RunLeft: [],
+                Jump: [],
+                Dead: []
+            },
+            currentSprite: [],
+            frameIndex: 0,
+            facingLeft: false
+        };
+
+        const background = {
+            x: 0,
+            image: new Image(),
+            speed: 2
+        };
+
+        let items = [];
+        const itemImages = [];
+        const itemScores = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+        let itemInterval;
+        let score = 0;
+
+        let enemies = [];
+        const enemyImages = [];
+        let enemyInterval;
+        let hp = 5;
+
+        background.image.src = './img/background.png';
+
+        function loadSprite(spriteType, count) {
+            for (let i = 1; i <= count; i++) {
+                const img = new Image();
+                img.src = './img/' + spriteType + '(' + i + ').png';
+                img.onload = () => {
+                    player.sprite[spriteType].push(img);
+                    if (spriteType === 'Idle' && player.sprite[spriteType].length === count) {
+                        player.currentSprite = player.sprite.Idle;
+                        update();
+                    }
+                };
+                img.onerror = () => {
+                    console.error(`Failed to load image: ${img.src}`);
+                };
+            }
+        }
+
+        function loadItemImages(count) {
+            for (let i = 1; i <= count; i++) {
+                const img = new Image();
+                img.src = './img/item' + i + '.png';
+                img.onload = () => {
+                    itemImages.push(img);
+                };
+                img.onerror = () => {
+                    console.error(`Failed to load item image: ${img.src}`);
+                };
+            }
+        }
+
+        function loadEnemyImages(count) {
+            for (let i = 1; i <= count; i++) {
+                const img = new Image();
+                img.src = './img/enemy' + i + '.png';
+                img.onload = () => {
+                    enemyImages.push(img);
+                };
+                img.onerror = () => {
+                    console.error(`Failed to load enemy image: ${img.src}`);
+                };
+            }
+        }
+
+        loadSprite('Idle', 10);
+        loadSprite('Run', 8);
+        loadSprite('Jump', 10);
+        loadSprite('Dead', 10);
+
+        loadItemImages(12);
+        loadEnemyImages(4); // โหลดภาพศัตรู 4 ภาพ
+
+        function drawBackground() {
+            ctx.drawImage(background.image, background.x, 0, canvas.width, canvas.height);
+            if (background.x < 0) {
+                ctx.drawImage(background.image, background.x + canvas.width, 0, canvas.width, canvas.height);
+            } else if (background.x > 0) {
+                ctx.drawImage(background.image, background.x - canvas.width, 0, canvas.width, canvas.height);
+            }
+            if (background.x + canvas.width < canvas.width) {
+                ctx.drawImage(background.image, background.x + canvas.width, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function drawPlayer() {
+            const sprite = player.currentSprite[player.frameIndex];
+            if (player.facingLeft) {
+                ctx.save();
+                ctx.translate(player.x + player.width, player.y);
+                ctx.scale(-1, 1);
+                ctx.drawImage(sprite, 0, 0, player.width, player.height);
+                ctx.restore();
+            } else {
+                ctx.drawImage(sprite, player.x, player.y, player.width, player.height);
+            }
+        }
+
+        function drawItems() {
+            items.forEach(item => {
+                ctx.drawImage(item.image, item.x, item.y, 50, 50);
+            });
+        }
+
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height);
+            });
+        }
+
+        function drawText() {
+            ctx.font = '24px Arial';
+            ctx.fillStyle = 'red';
+            ctx.fillText(`Score: ${score}`, 20, 30);
+
+            ctx.fillStyle = 'green';
+            ctx.fillText(`HP: ${hp}`, canvas.width - 100, 30);
+        }
+
+        function updateBackground() {
+            if (player.velocityX > 0 && player.x > canvas.width / 2) {
+                background.x -= player.velocityX * background.speed;
+                player.x = canvas.width / 2;
+            } else if (player.velocityX < 0 && player.x <= 100) {
+                background.x -= player.velocityX * background.speed;
+                player.x = 100;
+            }
+            if (background.x <= -canvas.width) {
+                background.x = 0;
+            } else if (background.x >= canvas.width) {
+                background.x = 0;
+            }
+        }
+
+        function updateItems() {
+            items.forEach(item => {
+                item.x -= background.speed;
+            });
+            items = items.filter(item => item.x + 50 > 0);
+        }
+
+        function updateEnemies() {
+            enemies.forEach(enemy => {
+                const enemySpeed = player.jumping ? 4 : 2; // เพิ่มความเร็วเมื่อตัวละครกระโดด
+                enemy.x -= enemySpeed;
+            });
+            enemies = enemies.filter(enemy => enemy.x + enemy.width > 0);
+        }
+
+        function checkCollisions() {
+            items.forEach((item, index) => {
+                if (player.x < item.x + 50 &&
+                    player.x + player.width > item.x &&
+                    player.y < item.y + 50 &&
+                    player.y + player.height > item.y) {
+                    // ชนไอเทม
+                    score += item.score;
+                    items.splice(index, 1);
+                }
+            });
+
+            enemies.forEach((enemy, index) => {
+                if (player.x-20 == enemy.x-10 &&
+                    //player.x + 80 > enemy.x &&
+                    player.y+player.height > enemy.y+enemy.height-10 &&
+                    player.y + enemy.height > enemy.y+5) {
+                    // ชนศัตรู
+                    hp -= 1;
+                    enemies.splice(index, 1);
+                    if (hp <= 0) {
+                        alert('Game Over!');
+                        resetGame();
+                    }
+                }
+            });
+        }
+
+        function update() {
+            player.x += player.velocityX;
+            player.y += player.velocityY;
+
+            if (player.x < 0) {
+                player.x = 0;
+            } else if (player.x + player.width > canvas.width) {
+                player.x = canvas.width - player.width;
+            }
+
+            if (player.jumping) {
+                player.velocityY += 0.5;
+                if (player.y + player.height >= canvas.height - 150) {
+                    player.y = canvas.height - 150 - player.height;
+                    player.velocityY = 0;
+                    player.jumping = false;
+                    player.currentSprite = player.velocityX !== 0 ? player.sprite.Run : player.sprite.Idle;
+                }
+            }
+
+            updateBackground();
+            updateItems();
+            updateEnemies();
+            checkCollisions();
+
+            player.frameIndex = (player.frameIndex + 1) % player.currentSprite.length;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+            drawPlayer();
+            drawItems();
+            drawEnemies();
+            drawText();
+
+            requestAnimationFrame(update);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowRight') {
+                player.velocityX = player.speed;
+                player.facingLeft = false;
+                player.currentSprite = player.sprite.Run;
+                startItemGeneration();
+            } else if (e.code === 'ArrowLeft') {
+                player.velocityX = -player.speed;
+                player.facingLeft = true;
+                player.currentSprite = player.sprite.Run;
+                clearItemGeneration();
+            } else if (e.code === 'ArrowUp' && !player.jumping) {
+                player.velocityY = -10;
+                player.jumping = true;
+                player.currentSprite = player.sprite.Jump;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+                player.velocityX = 0;
+                player.currentSprite = player.velocityY !== 0 ? player.sprite.Jump : player.sprite.Idle;
+                clearItemGeneration();
+            }
+        });
+
+        function createItem() {
+            const itemImage = itemImages[Math.floor(Math.random() * itemImages.length)];
+            const itemScore = itemScores[Math.floor(Math.random() * itemScores.length)];
+            const item = {
+                image: itemImage,
+                x: canvas.width,
+                y: 200, // ตำแหน่งความสูงคงที่
+                score: itemScore
+            };
+            items.push(item);
+        }
+
+        function createEnemy() {
+            const enemyImage = enemyImages[Math.floor(Math.random() * enemyImages.length)];
+            const enemyWidth = 100;
+            const enemy = {
+                image: enemyImage,
+                x: canvas.width, // เริ่มต้นนอกขอบจอด้านขวา
+                y: canvas.height - 150 - 100, // ตำแหน่งความสูงคงที่
+                width: enemyWidth,
+                height: 100 // ความสูงคงที่
+            };
+            enemies.push(enemy);
+        }
+
+        function startItemGeneration() {
+            clearItemGeneration(); // เคลียร์ interval เดิมก่อนเริ่มใหม่
+            const randomInterval = Math.floor(Math.random() * 3000) + 2000;
+            itemInterval = setInterval(() => {
+                createItem();
+                // สุ่มเวลาใหม่สำหรับไอเทมถัดไป
+                const nextInterval = Math.floor(Math.random() * 3000) + 2000;
+                clearInterval(itemInterval);
+                itemInterval = setTimeout(startItemGeneration, nextInterval);
+            }, randomInterval);
+        }
+
+        function startEnemyGeneration() {
+            enemyInterval = setInterval(createEnemy, 5000); // สร้างศัตรูทุกๆ 5 วินาที
+        }
+
+        function clearItemGeneration() {
+            if (itemInterval) {
+                clearInterval(itemInterval);
+                clearTimeout(itemInterval);
+                itemInterval = null;
+            }
+        }
+
+        function clearEnemyGeneration() {
+            if (enemyInterval) {
+                clearInterval(enemyInterval);
+                enemyInterval = null;
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            hp = 5;
+            items = [];
+            enemies = [];
+            player.x = 50;
+            player.y = canvas.height - 150 - 150;
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.jumping = false;
+            player.currentSprite = player.sprite.Idle;
+            background.x = 0;
+            clearItemGeneration();
+            clearEnemyGeneration();
+            startItemGeneration();
+            startEnemyGeneration();
+        }
+
+        startItemGeneration();
+        startEnemyGeneration();
+
+    </script>
 </body>
 </html>
+
