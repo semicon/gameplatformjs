@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platform Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 1px solid black;
+        }
+        #gameOverModal {
+            display: none; /* Hidden by default */
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+        }
+        #gameOverModal h2 {
+            margin: 0;
+        }
+        #gameOverModal button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: red;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #gameOverModal button:hover {
+            background-color: darkred;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="gameOverModal">
+        <h2>Game Over!</h2>
+        <p>Your score: <span id="finalScore"></span></p>
+        <button id="restartButton">Restart Game</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const restartButton = document.getElementById('restartButton');
+        const finalScoreDisplay = document.getElementById('finalScore');
+
+        const player = {
+            x: 50,
+            y: canvas.height - 150 - 150,
+            width: 150,
+            height: 150,
+            speed: 5, // Reduced player speed
+            velocityX: 0,
+            velocityY: 0,
+            jumping: false,
+            sprite: {
+                Idle: [],
+                Run: [],
+                RunLeft: [],
+                Jump: [],
+                Dead: []
+            },
+            currentSprite: [],
+            frameIndex: 0,
+            facingLeft: false,
+            lastFrameTime: 0, // Track the last time the frame was updated
+        };
+
+        const background = {
+            x: 0,
+            image: new Image(),
+            speed: 1 // Reduced background speed
+        };
+
+        let items = [];
+        const itemImages = [];
+        const itemScores = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+        let itemInterval;
+        let score = 0;
+
+        let enemies = [];
+        const enemyImages = [];
+        let enemyInterval;
+        let hp = 5;
+
+        let animationFrameId;
+        let isGameRunning = true;
+
+        const frameDuration = 1000 / 12; // Slower frame rate (8 FPS)
+
+        background.image.src = './img/background.png';
+        background.image.onload = () => {
+            console.log("Background image loaded successfully.");
+        };
+        background.image.onerror = () => {
+            console.error("Failed to load background image.");
+        };
+
+        function loadSprite(spriteType, count) {
+            for (let i = 1; i <= count; i++) {
+                const img = new Image();
+                img.src = './img/' + spriteType + '(' + i + ').png';
+                img.onload = () => {
+                    player.sprite[spriteType].push(img);
+                    console.log(`Loaded ${spriteType} sprite: ${img.src}`);
+                    if (spriteType === 'Idle' && player.sprite[spriteType].length === count) {
+                        player.currentSprite = player.sprite.Idle;
+                        update(performance.now());
+                    }
+                };
+                img.onerror = () => {
+                    console.error(`Failed to load image: ${img.src}`);
+                };
+            }
+        }
+
+        function loadItemImages(count) {
+            for (let i = 1; i <= count; i++) {
+                const img = new Image();
+                img.src = './img/item' + i + '.png';
+                img.onload = () => {
+                    itemImages.push(img);
+                    console.log(`Loaded item image: ${img.src}`);
+                };
+                img.onerror = () => {
+                    console.error(`Failed to load item image: ${img.src}`);
+                };
+            }
+        }
+
+        function loadEnemyImages(count) {
+            for (let i = 1; i <= count; i++) {
+                const img = new Image();
+                img.src = './img/enemy' + i + '.png';
+                img.onload = () => {
+                    enemyImages.push(img);
+                    console.log(`Loaded enemy image: ${img.src}`);
+                };
+                img.onerror = () => {
+                    console.error(`Failed to load enemy image: ${img.src}`);
+                };
+            }
+        }
+
+        loadSprite('Idle', 10);
+        loadSprite('Run', 8);
+        loadSprite('Jump', 10);
+        loadSprite('Dead', 10);
+
+        loadItemImages(12);
+        loadEnemyImages(4); // โหลดภาพศัตรู 4 ภาพ
+
+        function drawBackground() {
+            if (background.image.complete) {
+                ctx.drawImage(background.image, background.x, 0, canvas.width, canvas.height);
+                if (background.x < 0) {
+                    ctx.drawImage(background.image, background.x + canvas.width, 0, canvas.width, canvas.height);
+                } else if (background.x > 0) {
+                    ctx.drawImage(background.image, background.x - canvas.width, 0, canvas.width, canvas.height);
+                }
+                if (background.x + canvas.width < canvas.width) {
+                    ctx.drawImage(background.image, background.x + canvas.width, 0, canvas.width, canvas.height);
+                }
+            } else {
+                console.warn("Background image not loaded.");
+            }
+        }
+
+        function drawPlayer() {
+            const sprite = player.currentSprite[player.frameIndex];
+            if (sprite && sprite.complete) {
+                if (player.facingLeft) {
+                    ctx.save();
+                    ctx.translate(player.x + player.width, player.y);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(sprite, 0, 0, player.width, player.height);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(sprite, player.x, player.y, player.width, player.height);
+                }
+            } else {
+                console.warn("Player sprite not loaded or undefined.", sprite);
+            }
+        }
+
+        function drawItems() {
+            items.forEach(item => {
+                if (item.image && item.image.complete) {
+                    ctx.drawImage(item.image, item.x, item.y, 50, 50);
+                } else {
+                    console.warn("Item image not loaded or undefined.", item);
+                }
+            });
+        }
+
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                if (enemy.image && enemy.image.complete) {
+                    ctx.drawImage(enemy.image, enemy.x, enemy.y, enemy.width, enemy.height);
+                } else {
+                    console.warn("Enemy image not loaded or undefined.", enemy);
+                }
+            });
+        }
+
+        function drawText() {
+            ctx.font = '24px Arial';
+            ctx.fillStyle = 'red';
+            ctx.fillText(`Score: ${score}`, 20, 30);
+
+            ctx.fillStyle = 'green';
+            ctx.fillText(`HP: ${hp}`, canvas.width - 100, 30);
+        }
+
+        function updateBackground() {
+            if (player.velocityX > 0 && player.x > canvas.width / 2 - player.width) {
+                background.x -= player.velocityX * background.speed;
+                player.x = canvas.width / 2 - player.width;
+            } else if (player.velocityX < 0 && player.x <= 100) {
+                background.x -= player.velocityX * background.speed;
+                player.x = 100;
+            }
+            if (background.x <= -canvas.width) {
+                background.x = 0;
+            } else if (background.x >= canvas.width) {
+                background.x = 0;
+            }
+        }
+
+        function updateItems() {
+            items.forEach(item => {
+                item.x -= background.speed;
+            });
+            items = items.filter(item => item.x + 50 > 0);
+        }
+
+        function updateEnemies() {
+            enemies.forEach(enemy => {
+                const enemySpeed = player.jumping ? 4 : 3; // Reduced enemy speed
+                enemy.x -= enemySpeed;
+            });
+            enemies = enemies.filter(enemy => enemy.x + enemy.width > 0);
+        }
+
+        function checkCollisions() {
+            items.forEach((item, index) => {
+                if (player.x - 50 < item.x &&
+                    player.x + player.width > item.x &&
+                    player.y < item.y &&
+                    player.y-50 + player.height > item.y) {
+                    // ชนไอเทม
+                    score += item.score;
+                    items.splice(index, 1);
+                }
+            });
+
+            enemies.forEach((enemy, index) => {
+                if (player.x+80 < enemy.x + enemy.width && // ด้านขวาของผู้เล่น > ด้านซ้ายของศัตรู
+                    player.x + player.width > enemy.x+80 &&        // ด้านซ้ายของผู้เล่น < ด้านขวาของศัตรู
+                    player.y < enemy.y + enemy.height&&          // && ด้านล่างของผู้เล่น > ด้านบนของศัตรู
+                    player.y + player.height > enemy.y) {        // ด้านบนของผู้เล่น < ด้านล่างของศัตรู
+                    // ชนศัตรู
+                    hp -= 1;
+                    enemies.splice(index, 1);
+                    if (hp <= 0) {
+                        showGameOver();
+                    }
+                }
+            });
+        }
+
+        function update(currentTime) {
+            if (!isGameRunning) return;
+
+            const deltaTime = currentTime - player.lastFrameTime;
+            if (deltaTime >= frameDuration) {
+                player.frameIndex = (player.frameIndex + 1) % player.currentSprite.length;
+                player.lastFrameTime = currentTime;
+            }
+
+            player.x += player.velocityX;
+            player.y += player.velocityY;
+
+            if (player.x < 0) {
+                player.x = 0;
+            } else if (player.x + player.width > canvas.width) {
+                player.x = canvas.width - player.width;
+            }
+
+            if (player.jumping) {
+                player.velocityY += 0.15; // Reduced gravity effect for slower fall
+                if (player.y + player.height >= canvas.height - 150) {
+                    player.y = canvas.height - 150 - player.height;
+                    player.velocityY = 0;
+                    player.jumping = false;
+                    player.currentSprite = player.velocityX !== 0 ? player.sprite.Run : player.sprite.Idle;
+                }
+            }
+
+            updateBackground();
+            updateItems();
+            updateEnemies();
+            checkCollisions();
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+            drawPlayer();
+            drawItems();
+            drawEnemies();
+            drawText();
+
+            animationFrameId = requestAnimationFrame(update);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowRight') {
+                player.velocityX = player.speed;
+                player.facingLeft = false;
+                player.currentSprite = player.sprite.Run;
+                startItemGeneration();
+            } else if (e.code === 'ArrowLeft') {
+                player.velocityX = -player.speed;
+                player.facingLeft = true;
+                player.currentSprite = player.sprite.Run;
+                clearItemGeneration();
+            } else if (e.code === 'ArrowUp' && !player.jumping) {
+                player.velocityY = -8; // Reduced jump speed
+                player.jumping = true;
+                player.currentSprite = player.sprite.Jump;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+                player.velocityX = 0;
+                player.currentSprite = player.velocityY !== 0 ? player.sprite.Jump : player.sprite.Idle;
+                clearItemGeneration();
+            }
+        });
+
+        function createItem() {
+            const itemImage = itemImages[Math.floor(Math.random() * itemImages.length)];
+            const itemScore = itemScores[Math.floor(Math.random() * itemScores.length)];
+            const item = {
+                image: itemImage,
+                x: canvas.width,
+                y: 150, // ตำแหน่งความสูงคงที่
+                score: itemScore
+            };
+            items.push(item);
+        }
+
+        function createEnemy() {
+            const enemyImage = enemyImages[Math.floor(Math.random() * enemyImages.length)];
+            const enemyWidth = 100;
+            const enemy = {
+                image: enemyImage,
+                x: canvas.width, // เริ่มต้นนอกขอบจอด้านขวา
+                y: canvas.height - 150 - 100, // ตำแหน่งความสูงคงที่
+                width: enemyWidth,
+                height: 100 // ความสูงคงที่
+            };
+            enemies.push(enemy);
+        }
+
+        function startItemGeneration() {
+            clearItemGeneration(); // เคลียร์ interval เดิมก่อนเริ่มใหม่
+            const randomInterval = Math.floor(Math.random() * 5000) + 4000; // Slower item generation
+            itemInterval = setInterval(() => {
+                createItem();
+                // สุ่มเวลาใหม่สำหรับไอเทมถัดไป
+                const nextInterval = Math.floor(Math.random() * 5000) + 4000;
+                clearInterval(itemInterval);
+                itemInterval = setTimeout(startItemGeneration, nextInterval);
+            }, randomInterval);
+        }
+
+        function startEnemyGeneration() {
+            enemyInterval = setInterval(createEnemy, 8000); // Slower enemy generation
+        }
+
+        function clearItemGeneration() {
+            if (itemInterval) {
+                clearInterval(itemInterval);
+                clearTimeout(itemInterval);
+                itemInterval = null;
+            }
+        }
+
+        function clearEnemyGeneration() {
+            if (enemyInterval) {
+                clearInterval(enemyInterval);
+                enemyInterval = null;
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            hp = 5;
+            items = [];
+            enemies = [];
+            player.x = 50;
+            player.y = canvas.height - 150 - 150;
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.jumping = false;
+            player.currentSprite = player.sprite.Idle;
+            background.x = 0;
+            clearItemGeneration();
+            clearEnemyGeneration();
+            startItemGeneration();
+            startEnemyGeneration();
+            gameOverModal.style.display = 'none';
+            isGameRunning = true;
+            update(performance.now());
+        }
+
+        function showGameOver() {
+            isGameRunning = false;
+            cancelAnimationFrame(animationFrameId);
+            clearItemGeneration();
+            clearEnemyGeneration();
+            finalScoreDisplay.textContent = score;
+            gameOverModal.style.display = 'block';
+        }
+
+        restartButton.addEventListener('click', resetGame);
+
+        startItemGeneration();
+        startEnemyGeneration();
+        player.lastFrameTime = performance.now();
+        update(player.lastFrameTime);
+
+    </script>
+</body>
+</html>
