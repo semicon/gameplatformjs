@@ -12,12 +12,33 @@
             height: 100vh;
             margin: 0;
             background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        #menu {
+            text-align: center;
+        }
+        #menu h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+        #menu button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #menu button:hover {
+            background-color: #45a049;
         }
         canvas {
             border: 1px solid black;
+            display: none; /* ซ่อน Canvas จนกว่าเกมจะเริ่ม */
         }
         #gameOverModal {
-            display: none; /* Hidden by default */
+            display: none;
             position: fixed;
             top: 50%;
             left: 50%;
@@ -46,6 +67,10 @@
     </style>
 </head>
 <body>
+    <div id="menu">
+        <h1>Platform Game</h1>
+        <button id="startButton">Start Game</button>
+    </div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
     <div id="gameOverModal">
         <h2>Game Over!</h2>
@@ -53,18 +78,28 @@
         <button id="restartButton">Restart Game</button>
     </div>
     <script>
+        // JavaScript สำหรับควบคุมหน้าเมนูและเริ่มเกม
+        const menu = document.getElementById('menu');
+        const startButton = document.getElementById('startButton');
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const gameOverModal = document.getElementById('gameOverModal');
         const restartButton = document.getElementById('restartButton');
         const finalScoreDisplay = document.getElementById('finalScore');
 
+        startButton.addEventListener('click', () => {
+            menu.style.display = 'none'; // ซ่อนหน้าเมนู
+            canvas.style.display = 'block'; // แสดง Canvas
+            resetGame(); // เริ่มเกม
+        });
+
+        // ส่วนที่เหลือของโค้ดเกม (ตามโค้ดเดิมของคุณ)
         const player = {
             x: 50,
             y: canvas.height - 150 - 150,
             width: 150,
             height: 150,
-            speed: 5, // Reduced player speed
+            speed: 5,
             velocityX: 0,
             velocityY: 0,
             jumping: false,
@@ -78,13 +113,13 @@
             currentSprite: [],
             frameIndex: 0,
             facingLeft: false,
-            lastFrameTime: 0, // Track the last time the frame was updated
+            lastFrameTime: 0,
         };
 
         const background = {
             x: 0,
             image: new Image(),
-            speed: 1 // Reduced background speed
+            speed: 2.5
         };
 
         let items = [];
@@ -99,9 +134,9 @@
         let hp = 5;
 
         let animationFrameId;
-        let isGameRunning = true;
+        let isGameRunning = false;
 
-        const frameDuration = 1000 / 12; // Slower frame rate (8 FPS)
+        const frameDuration = 1000 / 16;
 
         background.image.src = './img/background.png';
         background.image.onload = () => {
@@ -163,7 +198,7 @@
         loadSprite('Dead', 10);
 
         loadItemImages(12);
-        loadEnemyImages(4); // โหลดภาพศัตรู 4 ภาพ
+        loadEnemyImages(4);
 
         function drawBackground() {
             if (background.image.complete) {
@@ -251,8 +286,9 @@
 
         function updateEnemies() {
             enemies.forEach(enemy => {
-                const enemySpeed = player.jumping ? 4 : 3; // Reduced enemy speed
+                const enemySpeed = player.jumping ? 10 : 8;
                 enemy.x -= enemySpeed;
+                console.log(enemySpeed)
             });
             enemies = enemies.filter(enemy => enemy.x + enemy.width > 0);
         }
@@ -263,18 +299,16 @@
                     player.x + player.width > item.x &&
                     player.y < item.y &&
                     player.y-50 + player.height > item.y) {
-                    // ชนไอเทม
                     score += item.score;
                     items.splice(index, 1);
                 }
             });
 
             enemies.forEach((enemy, index) => {
-                if (player.x+80 < enemy.x + enemy.width && // ด้านขวาของผู้เล่น > ด้านซ้ายของศัตรู
-                    player.x + player.width > enemy.x+80 &&        // ด้านซ้ายของผู้เล่น < ด้านขวาของศัตรู
+                if (player.x + 80 < enemy.x + enemy.width &&     // ด้านขวาของผู้เล่น > ด้านซ้ายของศัตรู
+                    player.x + player.width > enemy.x + 80 &&    // ด้านซ้ายของผู้เล่น < ด้านขวาของศัตรู
                     player.y < enemy.y + enemy.height&&          // && ด้านล่างของผู้เล่น > ด้านบนของศัตรู
                     player.y + player.height > enemy.y) {        // ด้านบนของผู้เล่น < ด้านล่างของศัตรู
-                    // ชนศัตรู
                     hp -= 1;
                     enemies.splice(index, 1);
                     if (hp <= 0) {
@@ -303,7 +337,7 @@
             }
 
             if (player.jumping) {
-                player.velocityY += 0.15; // Reduced gravity effect for slower fall
+                player.velocityY += 0.25;
                 if (player.y + player.height >= canvas.height - 150) {
                     player.y = canvas.height - 150 - player.height;
                     player.velocityY = 0;
@@ -339,7 +373,7 @@
                 player.currentSprite = player.sprite.Run;
                 clearItemGeneration();
             } else if (e.code === 'ArrowUp' && !player.jumping) {
-                player.velocityY = -8; // Reduced jump speed
+                player.velocityY = -9.5;
                 player.jumping = true;
                 player.currentSprite = player.sprite.Jump;
             }
@@ -359,7 +393,7 @@
             const item = {
                 image: itemImage,
                 x: canvas.width,
-                y: 150, // ตำแหน่งความสูงคงที่
+                y: 150,
                 score: itemScore
             };
             items.push(item);
@@ -370,20 +404,19 @@
             const enemyWidth = 100;
             const enemy = {
                 image: enemyImage,
-                x: canvas.width, // เริ่มต้นนอกขอบจอด้านขวา
-                y: canvas.height - 150 - 100, // ตำแหน่งความสูงคงที่
+                x: canvas.width,
+                y: canvas.height - 150 - 100,
                 width: enemyWidth,
-                height: 100 // ความสูงคงที่
+                height: 100
             };
             enemies.push(enemy);
         }
 
         function startItemGeneration() {
-            clearItemGeneration(); // เคลียร์ interval เดิมก่อนเริ่มใหม่
-            const randomInterval = Math.floor(Math.random() * 5000) + 4000; // Slower item generation
+            clearItemGeneration();
+            const randomInterval = Math.floor(Math.random() * 5000) + 4000;
             itemInterval = setInterval(() => {
                 createItem();
-                // สุ่มเวลาใหม่สำหรับไอเทมถัดไป
                 const nextInterval = Math.floor(Math.random() * 5000) + 4000;
                 clearInterval(itemInterval);
                 itemInterval = setTimeout(startItemGeneration, nextInterval);
@@ -391,7 +424,7 @@
         }
 
         function startEnemyGeneration() {
-            enemyInterval = setInterval(createEnemy, 8000); // Slower enemy generation
+            enemyInterval = setInterval(createEnemy, 8000);
         }
 
         function clearItemGeneration() {
@@ -445,7 +478,6 @@
         startEnemyGeneration();
         player.lastFrameTime = performance.now();
         update(player.lastFrameTime);
-
     </script>
 </body>
 </html>
